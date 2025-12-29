@@ -18,7 +18,7 @@ function speak(text) {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = 1;
   utterance.pitch = 1;
-  speechSynthesis.cancel(); // stop overlapping speech
+  speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
 }
 
@@ -27,17 +27,17 @@ window.onload = () => {
   speak("Hi, this is InboxAI. How can I help you?");
 };
 
-// ===================== MIC CLICK =====================
-document.getElementById("mic").onclick = () => {
-  recognition.start();
-};
-
 // ===================== VOICE RESULT =====================
 recognition.onresult = (event) => {
   const transcript = event.results[0][0].transcript;
   document.getElementById("input").value = transcript;
-  sendCommand(transcript); // AUTO SEND
+  sendCommand(transcript);
 };
+
+// ===================== MIC BUTTON =====================
+//document.getElementById("mic").onclick = () => {
+//  recognition.start();
+//};
 
 // ===================== SEND BUTTON =====================
 document.getElementById("send").onclick = () => {
@@ -46,21 +46,20 @@ document.getElementById("send").onclick = () => {
   sendCommand(text);
 };
 
-// ===================== SEND TO BACKEND =====================
-async function sendCommand(text) {
+// ===================== SEND COMMAND TO BACKEND =====================
+async function sendCommand(commandText) {
   document.getElementById("output").innerText = "Thinking...";
 
   try {
     const response = await fetch(
-      "https://inboxai-backend-tb5j.onrender.com/summarize/email",
+      "https://inboxai-backend-tb5j.onrender.com/command",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          body: text,
-          sender: "User"
+          command: commandText
         })
       }
     );
@@ -69,9 +68,11 @@ async function sendCommand(text) {
       throw new Error(`Backend error: ${response.status}`);
     }
 
-    const summary = await response.text();
-    document.getElementById("output").innerText = summary;
-    speak(summary);
+    const data = await response.json();
+    const reply = data.summary || data.message || "No response received.";
+
+    document.getElementById("output").innerText = reply;
+    speak(reply);
 
   } catch (err) {
     console.error(err);

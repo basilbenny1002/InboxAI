@@ -8,14 +8,25 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
 def get_gmail_service():
+    required = [
+        "GMAIL_REFRESH_TOKEN",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET"
+    ]
+
+    missing = [k for k in required if not os.getenv(k)]
+    if missing:
+        raise RuntimeError(f"Missing OAuth env vars: {missing}")
+
     creds = Credentials(
-        token=os.getenv("GMAIL_ACCESS_TOKEN"),
+        token=None,  
         refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
         scopes=SCOPES,
     )
+
     return build("gmail", "v1", credentials=creds)
 
 

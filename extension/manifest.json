@@ -8,7 +8,7 @@
     "microphone"
   ],
   "host_permissions": [
-    "https://*.onrender.com/*"
+    "https://inboxai-backend-tb5j.onrender.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
