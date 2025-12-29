@@ -10,3 +10,5 @@ __pycache__/
 # local stuff
 .vscode/
 .env
+client_secret.json
+oauth_bootstrap.json
