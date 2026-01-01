@@ -1,8 +1,11 @@
 // ===================== SPEECH SETUP =====================
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SpeechRecognition =
+  window.SpeechRecognition || window.webkitSpeechRecognition;
+
 if (!SpeechRecognition) {
   alert("Speech Recognition not supported in this browser");
 }
+
 const recognition = new SpeechRecognition();
 recognition.lang = "en-US";
 recognition.continuous = false;
@@ -10,137 +13,134 @@ recognition.interimResults = false;
 
 // ===================== SPEAK FUNCTION =====================
 function speak(text) {
-  if (!text || !text.trim()) {
-    console.warn("Nothing to speak");
-    return;
-  }
-  // Stop anything already speaking
+  if (!text || !text.trim()) return;
+
   window.speechSynthesis.cancel();
+
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = "en-US";
   utterance.rate = 1;
   utterance.pitch = 1;
-  // Ensure voices are loaded
+
   const voices = window.speechSynthesis.getVoices();
   if (voices.length > 0) {
     utterance.voice = voices.find(v => v.lang === "en-US") || voices[0];
   }
+
   window.speechSynthesis.speak(utterance);
 }
 
 // ===================== THINKING INDICATOR =====================
 function showThinking() {
-  const thinkingDiv = document.getElementById("thinking");
-  if (thinkingDiv) {
-    thinkingDiv.style.display = "block";
-  }
+  const el = document.getElementById("thinking");
+  if (el) el.style.display = "block";
 }
 
 function hideThinking() {
-  const thinkingDiv = document.getElementById("thinking");
-  if (thinkingDiv) {
-    thinkingDiv.style.display = "none";
-  }
+  const el = document.getElementById("thinking");
+  if (el) el.style.display = "none";
 }
 
-// ===================== SEND COMMAND WITH AI =====================
-async function sendCommand(text) {
-  if (!text || !text.trim()) return;
+// ===================== SEND COMMAND =====================
+async function sendCommand(command) {
+  if (!command || !command.trim()) return;
 
-  // Show thinking indicator
+  const responseBox = document.getElementById("response");
+
+  // 1️⃣ PRINT + SPEAK ACKNOWLEDGEMENT
+  const ack = `Alright, I’ll ${command}.`;
+  responseBox.textContent = ack;
+  speak(ack);
+
+  // 2️⃣ SHOW THINKING
   showThinking();
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("/command", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [
-          {
-            role: "user",
-            content: `You are InboxAI, a helpful voice assistant. Respond concisely and naturally to: "${text}"`
-          }
-        ],
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command })
     });
 
-    const data = await response.json();
-    const summary = data.content
-      .filter(item => item.type === "text")
-      .map(item => item.text)
-      .join("\n");
-
-    // Hide thinking indicator
+    const data = await res.json();
     hideThinking();
 
-    // Display summary in the output area
-    const outputDiv = document.getElementById("output");
-    if (outputDiv) {
-      outputDiv.textContent = summary;
+    let finalText = "";
+
+    // 3️⃣ FORMAT BACKEND RESPONSE
+    if (data.summaries && Array.isArray(data.summaries)) {
+      finalText = data.summaries
+        .map(
+          s => `Summary of email from ${s.sender}: ${s.summary}`
+        )
+        .join("\n\n");
+    } 
+    else if (data.summary) {
+      finalText = `Summary of email from ${data.sender}: ${data.summary}`;
+    } 
+    else if (data.error) {
+      finalText = data.error;
+    } 
+    else {
+      finalText = "No readable response received.";
     }
 
-    // Speak the summary
-    speak(summary);
+    // 4️⃣ PRINT + SPEAK FINAL RESPONSE
+    responseBox.textContent = finalText;
+    speak(finalText);
 
-  } catch (error) {
+  } catch (err) {
     hideThinking();
-    console.error("Error:", error);
-    const errorMsg = "Sorry, I'm having trouble processing that right now.";
-    const outputDiv = document.getElementById("output");
-    if (outputDiv) {
-      outputDiv.textContent = errorMsg;
-    }
-    speak(errorMsg);
+    console.error(err);
+
+    const msg = "Something went wrong while talking to the backend.";
+    responseBox.textContent = msg;
+    speak(msg);
   }
 }
 
+// ===================== VOICE INPUT =====================
+recognition.onresult = (event) => {
+  const transcript = event.results[0][0].transcript;
+  const input = document.getElementById("input");
+  if (input) input.value = transcript;
+  sendCommand(transcript);
+};
+
 // ===================== WINDOW ONLOAD =====================
 window.onload = () => {
-  // ===== GREETING =====
+  // Greeting
   speak("Hi, this is InboxAI. How can I help you?");
 
-  // ===== SEND BUTTON =====
+  // Send button
   const sendBtn = document.getElementById("send");
   if (sendBtn) {
     sendBtn.onclick = () => {
       const text = document.getElementById("input").value.trim();
-      if (!text) return;
       sendCommand(text);
     };
   }
 
-  // ===== MIC BUTTON =====
+  // Mic button
   const micBtn = document.getElementById("mic");
-  if (micBtn && recognition) {
+  if (micBtn) {
     micBtn.onclick = () => recognition.start();
-    
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      const inputField = document.getElementById("input");
-      if (inputField) {
-        inputField.value = transcript;
-      }
-    };
   }
 
-  // ===== THEME TOGGLE =====
+  // Theme toggle
   const themeToggle = document.getElementById("themeToggle");
   const body = document.body;
   const currentTheme = localStorage.getItem("theme") || "light";
-  
-  if (currentTheme === "dark") {
-    body.classList.add("dark");
-  }
-  
+
+  if (currentTheme === "dark") body.classList.add("dark");
+
   if (themeToggle) {
     themeToggle.addEventListener("click", () => {
       body.classList.toggle("dark");
-      const theme = body.classList.contains("dark") ? "dark" : "light";
-      localStorage.setItem("theme", theme);
+      localStorage.setItem(
+        "theme",
+        body.classList.contains("dark") ? "dark" : "light"
+      );
     });
   }
 };
