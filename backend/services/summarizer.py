@@ -1,30 +1,29 @@
-import re
-from services.llm_client import call_llm
+def summarize_emails(llm, emails):
+    if not emails:
+        return "You have no unread emails."
 
-def clean_email(text: str) -> str:
-    text = re.sub(r"\ufeff|\u2007", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"(unsubscribe|click here|tap to apply)", "", text, flags=re.I)
-    return text.strip()
+    combined_text = ""
 
-
-def summarize_email(body: str, sender: str) -> str:
-    body = clean_email(body)
-
-    prompt = f"""
-Summarize the following email.
-
-Rules:
-- Do NOT say phrases like "Here is the summary", "This email is about", or "In 2-3 sentences"
-- Write only the summary content directly
-- Be concise and factual
-- No introductions, no meta commentary
-
-Email sender: {sender}
-
-Email body:
-{body}
+    for i, email in enumerate(emails, start=1):
+        combined_text += f"""
+Email {i}
+From: {email['from']}
+Subject: {email['subject']}
+Body:
+{email['body']}
 """
 
+    prompt = f"""
+Summarize the following unread emails.
+Rules:
+- Be concise
+- Group similar emails
+- Use bullet points
+- Ignore signatures and promotions
 
-    return call_llm(prompt)
+Emails:
+{combined_text}
+"""
+
+    response = llm.invoke(prompt)
+    return response.content

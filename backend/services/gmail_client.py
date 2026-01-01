@@ -1,6 +1,5 @@
 import os
 import base64
-from typing import List
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from bs4 import BeautifulSoup
@@ -12,7 +11,7 @@ def get_gmail_service():
     required = [
         "GMAIL_REFRESH_TOKEN",
         "GOOGLE_CLIENT_ID",
-        "GOOGLE_CLIENT_SECRET"
+        "GOOGLE_CLIENT_SECRET",
     ]
 
     missing = [k for k in required if not os.getenv(k)]
@@ -65,32 +64,29 @@ def extract_email_body(msg: dict) -> str:
     return ""
 
 
-def get_unread_emails(limit: int = 10) -> List[dict]:
+def get_unread_emails(max_results: int = 5):
     service = get_gmail_service()
 
     results = service.users().messages().list(
         userId="me",
         q="is:unread",
-        maxResults=limit
+        maxResults=max_results,
     ).execute()
 
     messages = results.get("messages", [])
-    if not messages:
-        return []
-
     emails = []
 
-    for meta in messages:
+    for msg_meta in messages:
         msg = service.users().messages().get(
             userId="me",
-            id=meta["id"],
-            format="full"
+            id=msg_meta["id"],
+            format="full",
         ).execute()
 
         headers = msg.get("payload", {}).get("headers", [])
         sender = next(
             (h["value"] for h in headers if h["name"].lower() == "from"),
-            "Unknown sender"
+            "Unknown sender",
         )
 
         body = extract_email_body(msg)

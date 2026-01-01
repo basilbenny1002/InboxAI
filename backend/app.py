@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+from services.gmail_client import get_unread_emails
 from ai_logic.email import summarize_email_logic
-from services.gmail_client import get_unread_emails   # ✅ CHANGED
 
 load_dotenv()
 
@@ -23,41 +23,30 @@ app.add_middleware(
 class CommandPayload(BaseModel):
     command: str
 
-class EmailPayload(BaseModel):
-    body: str
-    sender: str
 
-# ============================ HEALTH CHECK ============================
+# ============================ ROOT ============================
 @app.get("/")
-def health_check():
-    return {"status": "InboxAI backend running"}
+def root():
+    return {"status": "InboxAI backend running", "docs": "/docs"}
 
-# ============================ MANUAL EMAIL SUMMARY ============================
-@app.post("/summarize/email")
-def summarize_email_endpoint(payload: EmailPayload):
-    summary = summarize_email_logic(
-        body=payload.body,
-        sender=payload.sender
-    )
-    return {"summary": summary}
 
-# ============================ UNREAD EMAIL SUMMARY (NEW CORE ENDPOINT) ============================
+# ============================ UNREAD SUMMARY ============================
 @app.post("/summarize/unread")
 def summarize_unread_emails():
-    emails = get_unread_emails(limit=10)
+    emails = get_unread_emails()
 
     if not emails:
-        return {"summary": "You have no unread emails."}
+        return {"email_count": 0, "summaries": []}
 
     summaries = []
-
-    for email in emails:
+    for idx, email in enumerate(emails, start=1):
         summary = summarize_email_logic(
             body=email["body"],
-            sender=email["sender"]
+            sender=email["sender"],
         )
 
         summaries.append({
+            "summary_number": idx,
             "sender": email["sender"],
             "summary": summary
         })
@@ -67,13 +56,30 @@ def summarize_unread_emails():
         "summaries": summaries
     }
 
-# ============================ COMMAND HANDLER (FIXED) ============================
+
+# ============================ COMMAND HANDLER ============================
 @app.post("/command")
 def handle_command(payload: CommandPayload):
     command = payload.command.lower()
 
-    # ✅ Any summarize command → unread summary
-    if "summarize" in command:
+    if "summarize" in command and "unread" in command:
         return summarize_unread_emails()
+
+    if "summarize" in command and "last email" in command:
+        emails = get_unread_emails(max_results=1)
+
+        if not emails:
+            return {"summary": "No unread emails found."}
+
+        email = emails[0]
+        summary = summarize_email_logic(
+            body=email["body"],
+            sender=email["sender"],
+        )
+
+        return {
+            "sender": email["sender"],
+            "summary": summary
+        }
 
     return {"message": "Command not supported yet"}

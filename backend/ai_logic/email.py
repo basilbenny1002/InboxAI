@@ -1,4 +1,20 @@
-from services.summarizer import summarize_email
+def clean_summary(text: str) -> str:
+    bad_starts = [
+        "here's a summary",
+        "here is a summary",
+        "here's the summary",
+        "here is the summary",
+    ]
 
-def summarize_email_logic(body: str, sender: str):
-    return summarize_email(body, sender)
+    lower = text.lower()
+    for phrase in bad_starts:
+        if lower.startswith(phrase):
+            return text.split("\n", 1)[-1].strip()
+
+    return text.strip()
+
+
+def summarize_email_logic(body: str, sender: str) -> str:
+    # Replace this with your LLM call later
+    summary = f"The email is from {sender}. {body[:300]}..."
+    return clean_summary(summary)
