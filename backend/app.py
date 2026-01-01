@@ -1,11 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 from ai_logic.email import summarize_email_logic
-from services.gmail_client import get_last_email
-from dotenv import load_dotenv
-import os
+from services.gmail_client import get_unread_emails   # ✅ CHANGED
 
 load_dotenv()
 
@@ -42,37 +41,39 @@ def summarize_email_endpoint(payload: EmailPayload):
     )
     return {"summary": summary}
 
-# ============================ LAST GMAIL SUMMARY ============================
-@app.post("/summarize/last-email")
-def summarize_last_email():
-    email = get_last_email()
+# ============================ UNREAD EMAIL SUMMARY (NEW CORE ENDPOINT) ============================
+@app.post("/summarize/unread")
+def summarize_unread_emails():
+    emails = get_unread_emails(limit=10)
 
-    if not email or not email.get("body"):
-        return {"summary": "No readable email found."}
+    if not emails:
+        return {"summary": "You have no unread emails."}
 
-    summary = summarize_email_logic(
-        body=email["body"],
-        sender=email.get("sender", "Unknown")
-    )
+    summaries = []
 
-    return {"summary": summary}
+    for email in emails:
+        summary = summarize_email_logic(
+            body=email["body"],
+            sender=email["sender"]
+        )
 
-# ============================ COMMAND HANDLER ============================
+        summaries.append({
+            "sender": email["sender"],
+            "summary": summary
+        })
+
+    return {
+        "email_count": len(summaries),
+        "summaries": summaries
+    }
+
+# ============================ COMMAND HANDLER (FIXED) ============================
 @app.post("/command")
 def handle_command(payload: CommandPayload):
     command = payload.command.lower()
 
-    if "summarize" in command and "last email" in command:
-        email = get_last_email()
-
-        if not email or not email.get("body"):
-            return {"summary": "No readable email found."}
-
-        summary = summarize_email_logic(
-            body=email["body"],
-            sender=email.get("sender", "Unknown")
-        )
-
-        return {"summary": summary}
+    # ✅ Any summarize command → unread summary
+    if "summarize" in command:
+        return summarize_unread_emails()
 
     return {"message": "Command not supported yet"}

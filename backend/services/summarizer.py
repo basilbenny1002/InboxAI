@@ -12,17 +12,19 @@ def summarize_email(body: str, sender: str) -> str:
     body = clean_email(body)
 
     prompt = f"""
-Explain the email clearly in 2–3 sentences.
+Summarize the following email.
 
-- Say what the email is about
-- Why it was sent
-- Who sent it
-- What the user should do (if anything)
+Rules:
+- Do NOT say phrases like "Here is the summary", "This email is about", or "In 2-3 sentences"
+- Write only the summary content directly
+- Be concise and factual
+- No introductions, no meta commentary
 
-Sender: {sender}
+Email sender: {sender}
 
-Email:
-{body[:1200]}
+Email body:
+{body}
 """
+
 
     return call_llm(prompt)

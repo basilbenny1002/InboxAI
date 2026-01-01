@@ -1,5 +1,6 @@
 import os
 import base64
+from typing import List
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from bs4 import BeautifulSoup
@@ -19,7 +20,7 @@ def get_gmail_service():
         raise RuntimeError(f"Missing OAuth env vars: {missing}")
 
     creds = Credentials(
-        token=None,  
+        token=None,
         refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
@@ -64,30 +65,40 @@ def extract_email_body(msg: dict) -> str:
     return ""
 
 
-def get_last_email():
+def get_unread_emails(limit: int = 10) -> List[dict]:
     service = get_gmail_service()
 
     results = service.users().messages().list(
         userId="me",
-        maxResults=1
+        q="is:unread",
+        maxResults=limit
     ).execute()
 
     messages = results.get("messages", [])
     if not messages:
-        return None
+        return []
 
-    msg = service.users().messages().get(
-        userId="me",
-        id=messages[0]["id"],
-        format="full"
-    ).execute()
+    emails = []
 
-    headers = msg.get("payload", {}).get("headers", [])
-    sender = next(
-        (h["value"] for h in headers if h["name"].lower() == "from"),
-        "Unknown sender"
-    )
+    for meta in messages:
+        msg = service.users().messages().get(
+            userId="me",
+            id=meta["id"],
+            format="full"
+        ).execute()
 
-    body = extract_email_body(msg)
+        headers = msg.get("payload", {}).get("headers", [])
+        sender = next(
+            (h["value"] for h in headers if h["name"].lower() == "from"),
+            "Unknown sender"
+        )
 
-    return {"sender": sender, "body": body}
+        body = extract_email_body(msg)
+
+        if body.strip():
+            emails.append({
+                "sender": sender,
+                "body": body
+            })
+
+    return emails
