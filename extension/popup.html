@@ -3,6 +3,93 @@
 <head>
   <title>InboxAI</title>
   <style>
+
+    /* ===================== THINKING INDICATOR ===================== */
+.thinking {
+    text-align: center;
+    padding: 20px;
+    margin: 20px 0;
+    background: rgba(0, 120, 212, 0.1);
+    border-radius: 10px;
+    border-left: 4px solid #0078d4;
+}
+
+.thinking-dots {
+    display: inline-flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.thinking-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #0078d4;
+    animation: thinking-bounce 1.4s infinite ease-in-out both;
+}
+
+.thinking-dots span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.thinking-dots span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes thinking-bounce {
+    0%, 80%, 100% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.thinking p {
+    margin: 0;
+    color: #0078d4;
+    font-weight: 500;
+}
+
+/* ===================== SUMMARY DISPLAY ===================== */
+.summary {
+    padding: 20px;
+    margin: 20px 0;
+    background: rgba(0, 200, 83, 0.1);
+    border-radius: 10px;
+    border-left: 4px solid #00c853;
+    animation: fadeIn 0.5s ease-in;
+}
+
+.summary p {
+    margin: 0;
+    line-height: 1.6;
+    color: #333;
+}
+
+.dark .summary p {
+    color: #f0f0f0;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Response container styling */
+#response {
+    min-height: 100px;
+    transition: all 0.3s ease;
+}
+
     * {
       margin: 0;
       padding: 0;
