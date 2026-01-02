@@ -106,7 +106,7 @@ async function sendCommand() {
   showThinking();
 
   try {
-    const res = await fetch("/command", {
+    const res = await fetch("https://inboxai-backend-tb5j.onrender.com/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ command })
@@ -162,7 +162,12 @@ window.onload = () => {
 
 // 🔓 After first user interaction → speak greeting
 document.addEventListener("click", () => {
-  if (speechUnlocked) {
-    speak(greetingText);
+  if (!speechUnlocked) {
+    const unlock = new SpeechSynthesisUtterance(" ");
+    unlock.volume = 0;
+    window.speechSynthesis.speak(unlock);
+    speechUnlocked = true;
   }
+
+  speak(greetingText);
 }, { once: true });
