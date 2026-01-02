@@ -1,146 +1,97 @@
-// ===================== SPEECH SETUP =====================
-const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+const chatContainer = document.getElementById("chatContainer");
+const themeToggle = document.getElementById("themeToggle");
+const body = document.body;
 
-if (!SpeechRecognition) {
-  alert("Speech Recognition not supported in this browser");
+/* THEME */
+if (localStorage.getItem("theme") === "dark") {
+  body.classList.add("dark");
 }
 
-const recognition = new SpeechRecognition();
-recognition.lang = "en-US";
-recognition.continuous = false;
-recognition.interimResults = false;
+themeToggle.addEventListener("click", () => {
+  body.classList.toggle("dark");
+  localStorage.setItem(
+    "theme",
+    body.classList.contains("dark") ? "dark" : "light"
+  );
+});
 
-// ===================== SPEAK FUNCTION =====================
-function speak(text) {
-  if (!text || !text.trim()) return;
+/* SEND HANDLERS */
+sendBtn.addEventListener("click", sendMessage);
 
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-US";
-  utterance.rate = 1;
-  utterance.pitch = 1;
-
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length > 0) {
-    utterance.voice = voices.find(v => v.lang === "en-US") || voices[0];
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
   }
+});
 
-  window.speechSynthesis.speak(utterance);
+function addMessage(text, type) {
+  const div = document.createElement("div");
+  div.className = `message ${type}`;
+  div.textContent = text;
+  chatContainer.appendChild(div);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// ===================== THINKING INDICATOR =====================
 function showThinking() {
-  const el = document.getElementById("thinking");
-  if (el) el.style.display = "block";
+  const div = document.createElement("div");
+  div.className = "thinking";
+  div.id = "thinking";
+  div.innerHTML = "<span></span><span></span><span></span>";
+  chatContainer.appendChild(div);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-function hideThinking() {
-  const el = document.getElementById("thinking");
-  if (el) el.style.display = "none";
+function removeThinking() {
+  const t = document.getElementById("thinking");
+  if (t) t.remove();
 }
 
-// ===================== SEND COMMAND =====================
-async function sendCommand(command) {
-  if (!command || !command.trim()) return;
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
 
-  const responseBox = document.getElementById("response");
+  addMessage(text, "user");
+  input.value = "";
 
-  // 1️⃣ PRINT + SPEAK ACKNOWLEDGEMENT
-  const ack = `Alright, I’ll ${command}.`;
-  responseBox.textContent = ack;
-  speak(ack);
-
-  // 2️⃣ SHOW THINKING
   showThinking();
 
   try {
     const res = await fetch("/command", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command })
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ command: text })
     });
 
     const data = await res.json();
-    hideThinking();
+    removeThinking();
 
-    let finalText = "";
+    let reply = "";
 
-    // 3️⃣ FORMAT BACKEND RESPONSE
     if (data.summaries && Array.isArray(data.summaries)) {
-      finalText = data.summaries
-        .map(
-          s => `Summary of email from ${s.sender}: ${s.summary}`
-        )
+      reply = data.summaries
+        .map(s => `📧 ${s.sender}: ${s.summary}`)
         .join("\n\n");
     } 
     else if (data.summary) {
-      finalText = `Summary of email from ${data.sender}: ${data.summary}`;
+      reply = `📧 ${data.sender}: ${data.summary}`;
     } 
     else if (data.error) {
-      finalText = data.error;
+      reply = data.error;
     } 
     else {
-      finalText = "No readable response received.";
+      reply = "No readable response received.";
     }
 
-    // 4️⃣ PRINT + SPEAK FINAL RESPONSE
-    responseBox.textContent = finalText;
-    speak(finalText);
+    addMessage(reply, "bot");
 
   } catch (err) {
-    hideThinking();
+    removeThinking();
     console.error(err);
-
-    const msg = "Something went wrong while talking to the backend.";
-    responseBox.textContent = msg;
-    speak(msg);
+    addMessage("⚠️ Backend not responding.", "bot");
   }
 }
-
-// ===================== VOICE INPUT =====================
-recognition.onresult = (event) => {
-  const transcript = event.results[0][0].transcript;
-  const input = document.getElementById("input");
-  if (input) input.value = transcript;
-  sendCommand(transcript);
-};
-
-// ===================== WINDOW ONLOAD =====================
-window.onload = () => {
-  // Greeting
-  speak("Hi, this is InboxAI. How can I help you?");
-
-  // Send button
-  const sendBtn = document.getElementById("send");
-  if (sendBtn) {
-    sendBtn.onclick = () => {
-      const text = document.getElementById("input").value.trim();
-      sendCommand(text);
-    };
-  }
-
-  // Mic button
-  const micBtn = document.getElementById("mic");
-  if (micBtn) {
-    micBtn.onclick = () => recognition.start();
-  }
-
-  // Theme toggle
-  const themeToggle = document.getElementById("themeToggle");
-  const body = document.body;
-  const currentTheme = localStorage.getItem("theme") || "light";
-
-  if (currentTheme === "dark") body.classList.add("dark");
-
-  if (themeToggle) {
-    themeToggle.addEventListener("click", () => {
-      body.classList.toggle("dark");
-      localStorage.setItem(
-        "theme",
-        body.classList.contains("dark") ? "dark" : "light"
-      );
-    });
-  }
-};
