@@ -44,18 +44,24 @@ def get_unread_emails_summary():
         for idx, email in enumerate(emails, start=1):
             print(f"\nProcessing email {idx}")
             print(f"Sender: {email['from']}")
+            print(f"Subject: {email.get('subject', 'No Subject')}")
+            print(f"Body length: {len(email['body'])} chars")
+            print(f"Has attachments: {bool(email.get('attachment_text'))}")
 
             has_attachments = bool(email.get("attachment_text"))
-
+            
+            # Provide better context to the AI
             summary = summarize_email_logic(
                 body=email["body"],
                 sender=email["from"],
-                attachments=email.get("attachment_text", "")
+                subject=email.get("subject", ""),
+                attachments=email.get("attachment_text", "")  # This is already a string - correct!
             )
 
             summaries.append({
                 "summary_number": idx,
                 "sender": email["from"],
+                "subject": email.get("subject", "No Subject"),
                 "summary": summary,
                 "has_attachments": has_attachments
             })
@@ -69,7 +75,6 @@ def get_unread_emails_summary():
         print("\n!!! ERROR in get_unread_emails_summary !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def get_last_email_summary():
     try:

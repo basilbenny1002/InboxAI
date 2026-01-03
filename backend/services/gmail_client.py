@@ -69,7 +69,6 @@ def extract_body(payload):
 
 
 # ============================ MAIN FUNCTION ============================
-
 def get_unread_emails(max_results=10):
     service = get_gmail_service()
 
@@ -91,7 +90,6 @@ def get_unread_emails(max_results=10):
 
         payload = msg_data.get("payload", {})
         headers = payload.get("headers", [])
-        parts = payload.get("parts", [])
 
         # -------- Headers --------
         sender = next(
@@ -107,37 +105,19 @@ def get_unread_emails(max_results=10):
         # -------- Body --------
         body = extract_body(payload)
 
-        # -------- Attachments --------
+        # -------- Attachments (FIXED) --------
         attachments = []
-
-        for part in parts:
-            if part.get("filename") and part.get("body", {}).get("attachmentId"):
-                att_id = part["body"]["attachmentId"]
-
-                att = service.users().messages().attachments().get(
-                    userId="me",
-                    messageId=msg["id"],
-                    id=att_id
-                ).execute()
-
-                file_data = base64.urlsafe_b64decode(att["data"].encode("UTF-8"))
-
-                os.makedirs("temp_attachments", exist_ok=True)
-                file_path = f"temp_attachments/{part['filename']}"
-
-                with open(file_path, "wb") as f:
-                    f.write(file_data)
-
-                attachments.append({
-                    "filename": part["filename"],
-                    "path": file_path
-                })
+        extract_attachments(payload, service, msg["id"], attachments)
 
         # -------- Process Attachments --------
         attachment_text = ""
         if attachments:
-            processed = process_all_attachments(attachments)
-            attachment_text = create_attachment_summary(processed)
+            try:
+                processed = process_all_attachments(attachments)
+                attachment_text = create_attachment_summary(processed)
+            except Exception as e:
+                print(f"Error processing attachments: {e}")
+                attachment_text = f"[Error processing {len(attachments)} attachment(s)]"
 
         # -------- Final Email Object --------
         emails.append({
@@ -150,3 +130,36 @@ def get_unread_emails(max_results=10):
         })
 
     return emails
+
+      
+def extract_attachments(payload, service, message_id, attachments_list):
+    """Recursively extract all attachments from email parts"""
+    parts = payload.get("parts", [])
+    
+    for part in parts:
+        # Check if this part is an attachment
+        if part.get("filename") and part.get("body", {}).get("attachmentId"):
+            att_id = part["body"]["attachmentId"]
+            
+            att = service.users().messages().attachments().get(
+                userId="me",
+                messageId=message_id,
+                id=att_id
+            ).execute()
+            
+            file_data = base64.urlsafe_b64decode(att["data"].encode("UTF-8"))
+            
+            os.makedirs("temp_attachments", exist_ok=True)
+            file_path = f"temp_attachments/{part['filename']}"
+            
+            with open(file_path, "wb") as f:
+                f.write(file_data)
+            
+            attachments_list.append({
+                "filename": part["filename"],
+                "path": file_path
+            })
+        
+        # Recurse into nested parts
+        if part.get("parts"):
+            extract_attachments(part, service, message_id, attachments_list)
