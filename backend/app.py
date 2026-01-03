@@ -32,104 +32,68 @@ def root():
     return {"status": "InboxAI backend running", "docs": "/docs"}
 
 
-# ============================ HELPER FUNCTIONS ============================
+# ============================ HELPERS ============================
 def get_unread_emails_summary():
-    """Get all unread emails with summaries"""
     try:
         print("\n=== Starting get_unread_emails_summary ===")
         emails = get_unread_emails()
-        print(f"Retrieved {len(emails)} emails from Gmail")
-
-        if not emails:
-            return {"email_count": 0, "summaries": []}
+        print(f"Retrieved {len(emails)} emails")
 
         summaries = []
-        for idx, email in enumerate(emails, start=1):
-            print(f"\nProcessing email {idx}/{len(emails)}")
-            print(f"  Sender: {email['sender']}")
-            print(f"  Attachments: {len(email.get('attachments', []))}")
-            
-            try:
-                summary = summarize_email_logic(
-                    body=email["body"],
-                    sender=email["sender"],
-                    attachments=email.get("attachments", [])
-                )
-                
-                # Include attachment info in response
-                attachment_info = ""
-                if email.get("attachments"):
-                    att_count = len(email["attachments"])
-                    att_names = [a['filename'] for a in email["attachments"]]
-                    attachment_info = f" (with {att_count} attachment{'s' if att_count > 1 else ''}: {', '.join(att_names)})"
-                
-                summaries.append({
-                    "summary_number": idx,
-                    "sender": email["sender"],
-                    "summary": summary,
-                    "has_attachments": len(email.get("attachments", [])) > 0,
-                    "attachment_count": len(email.get("attachments", [])),
-                    "attachment_info": attachment_info
-                })
-                
-                print(f"  ✓ Summary generated successfully")
-                
-            except Exception as e:
-                print(f"  ✗ Error summarizing email: {str(e)}")
-                traceback.print_exc()
-                
-                # Add a fallback summary instead of failing completely
-                summaries.append({
-                    "summary_number": idx,
-                    "sender": email["sender"],
-                    "summary": f"[Error generating summary: {str(e)}]",
-                    "has_attachments": len(email.get("attachments", [])) > 0,
-                    "attachment_count": len(email.get("attachments", [])),
-                    "attachment_info": ""
-                })
 
-        print(f"\n=== Completed: {len(summaries)} summaries generated ===")
-        
+        for idx, email in enumerate(emails, start=1):
+            print(f"\nProcessing email {idx}")
+            print(f"Sender: {email['from']}")
+
+            has_attachments = bool(email.get("attachment_text"))
+
+            summary = summarize_email_logic(
+                body=email["body"],
+                sender=email["from"],
+                attachments=email.get("attachment_text", "")
+            )
+
+            summaries.append({
+                "summary_number": idx,
+                "sender": email["from"],
+                "summary": summary,
+                "has_attachments": has_attachments
+            })
+
         return {
             "email_count": len(summaries),
             "summaries": summaries
         }
-    
+
     except Exception as e:
-        print(f"\n!!! ERROR in get_unread_emails_summary !!!")
-        print(f"Error: {str(e)}")
+        print("\n!!! ERROR in get_unread_emails_summary !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 def get_last_email_summary():
-    """Get the last unread email with summary"""
     try:
-        print("\n=== Starting get_last_email_summary ===")
         emails = get_unread_emails(max_results=1)
 
         if not emails:
             return {"error": "No unread emails found"}
 
         email = emails[0]
-        print(f"Processing email from: {email['sender']}")
-        
+
         summary = summarize_email_logic(
             body=email["body"],
-            sender=email["sender"],
-            attachments=email.get("attachments", [])
+            sender=email["from"],
+            attachments=email.get("attachment_text", "")
         )
 
         return {
-            "sender": email["sender"],
+            "sender": email["from"],
             "summary": summary,
-            "has_attachments": len(email.get("attachments", [])) > 0,
-            "attachment_count": len(email.get("attachments", []))
+            "has_attachments": bool(email.get("attachment_text"))
         }
-    
+
     except Exception as e:
-        print(f"\n!!! ERROR in get_last_email_summary !!!")
-        print(f"Error: {str(e)}")
+        print("\n!!! ERROR in get_last_email_summary !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -137,36 +101,21 @@ def get_last_email_summary():
 # ============================ COMMAND HANDLER ============================
 @app.post("/command")
 def handle_command(payload: CommandPayload):
-    """
-    Intelligent command handler using LLM function calling
-    """
     try:
-        # Map function names to actual Python functions
         function_map = {
             "get_unread_emails_summary": get_unread_emails_summary,
             "get_last_email_summary": get_last_email_summary
         }
-        
-        # Use intelligent handler
-        result = intelligent_command_handler(payload.command, function_map)
-        
-        return result
-    
+
+        return intelligent_command_handler(payload.command, function_map)
+
     except Exception as e:
-        print(f"\n!!! ERROR in handle_command !!!")
-        print(f"Error: {str(e)}")
+        print("\n!!! ERROR in handle_command !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================ OLD ENDPOINTS ============================
+# ============================ LEGACY ============================
 @app.post("/summarize/unread")
 def summarize_unread_emails():
-    """Legacy endpoint for summarizing unread emails"""
-    try:
-        return get_unread_emails_summary()
-    except Exception as e:
-        print(f"\n!!! ERROR in /summarize/unread endpoint !!!")
-        print(f"Error: {str(e)}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    return get_unread_emails_summary()
