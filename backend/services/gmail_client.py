@@ -2,33 +2,38 @@ import os
 import base64
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+
 from googleapiclient.discovery import build
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 
-CLIENT_SECRET_PATH = "/etc/secrets/client_secret.json"
-TOKEN_PATH = "/etc/secrets/token.json"
+
+
+import os
+import base64
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 def get_gmail_service():
-    creds = None
+    creds = Credentials(
+        token=None,
+        refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        scopes=SCOPES,
+    )
 
-    if os.path.exists(TOKEN_PATH):
-        creds = Credentials.from_authorized_user_file(
-            TOKEN_PATH, SCOPES
-        )
+    if not creds.refresh_token:
+        raise RuntimeError("Missing GMAIL_REFRESH_TOKEN env var")
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            # 🚫 DO NOT run OAuth flow on Render
-            raise RuntimeError(
-                "OAuth token missing or invalid. Generate token.json locally."
-            )
+    creds.refresh(Request())
+    return build("gmail", "v1", credentials=creds)
 
-    return build('gmail', 'v1', credentials=creds)
 
 def get_unread_emails(max_results=10):
     service = get_gmail_service()
