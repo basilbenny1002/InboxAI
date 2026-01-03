@@ -1,25 +1,20 @@
-from google_auth_oauthlib.flow import InstalledAppFlow
+import os
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-def main():
-    flow = InstalledAppFlow.from_client_secrets_file(
-        "client_secret.json",
-        SCOPES
+def get_gmail_service():
+    creds = Credentials(
+        token=None,
+        refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        scopes=SCOPES,
     )
 
-    creds = flow.run_local_server(
-        port=0,
-        access_type="offline",
-        prompt="consent"
-    )
+    creds.refresh(Request())
 
-    print("\n===== COPY THESE VALUES =====\n")
-    print("GMAIL_ACCESS_TOKEN =", creds.token)
-    print("GMAIL_REFRESH_TOKEN =", creds.refresh_token)
-    print("GOOGLE_CLIENT_ID =", creds.client_id)
-    print("GOOGLE_CLIENT_SECRET =", creds.client_secret)
-    print("\n=============================\n")
-
-if __name__ == "__main__":
-    main()
+    return build("gmail", "v1", credentials=creds)
