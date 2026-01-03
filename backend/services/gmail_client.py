@@ -12,6 +12,8 @@ from ai_logic.readers.attachment_processor import (
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 
+# ============================ GMAIL SERVICE ============================
+
 def get_gmail_service():
     creds = Credentials(
         token=None,
@@ -28,6 +30,45 @@ def get_gmail_service():
     creds.refresh(Request())
     return build("gmail", "v1", credentials=creds)
 
+
+# ============================ BODY EXTRACTION ============================
+
+def extract_body(payload):
+    """
+    Recursively extract email body.
+    Priority: text/plain > text/html
+    """
+    if payload.get("body", {}).get("data"):
+        return base64.urlsafe_b64decode(
+            payload["body"]["data"]
+        ).decode("utf-8", errors="ignore")
+
+    parts = payload.get("parts", [])
+    html_body = ""
+
+    for part in parts:
+        mime = part.get("mimeType")
+
+        if mime == "text/plain" and part.get("body", {}).get("data"):
+            return base64.urlsafe_b64decode(
+                part["body"]["data"]
+            ).decode("utf-8", errors="ignore")
+
+        if mime == "text/html" and part.get("body", {}).get("data"):
+            html_body = base64.urlsafe_b64decode(
+                part["body"]["data"]
+            ).decode("utf-8", errors="ignore")
+
+        # 🔁 Recurse into nested parts
+        if part.get("parts"):
+            nested = extract_body(part)
+            if nested:
+                return nested
+
+    return html_body  # fallback if only HTML exists
+
+
+# ============================ MAIN FUNCTION ============================
 
 def get_unread_emails(max_results=10):
     service = get_gmail_service()
@@ -53,23 +94,18 @@ def get_unread_emails(max_results=10):
         parts = payload.get("parts", [])
 
         # -------- Headers --------
-        sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown")
-        subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
+        sender = next(
+            (h["value"] for h in headers if h["name"].lower() == "from"),
+            "Unknown"
+        )
+
+        subject = next(
+            (h["value"] for h in headers if h["name"].lower() == "subject"),
+            "No Subject"
+        )
 
         # -------- Body --------
-        body = ""
-        if parts:
-            for part in parts:
-                if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
-                    body = base64.urlsafe_b64decode(
-                        part["body"]["data"]
-                    ).decode("utf-8", errors="ignore")
-                    break
-        else:
-            if payload.get("body", {}).get("data"):
-                body = base64.urlsafe_b64decode(
-                    payload["body"]["data"]
-                ).decode("utf-8", errors="ignore")
+        body = extract_body(payload)
 
         # -------- Attachments --------
         attachments = []
@@ -97,18 +133,19 @@ def get_unread_emails(max_results=10):
                     "path": file_path
                 })
 
-        # -------- Process attachments --------
+        # -------- Process Attachments --------
         attachment_text = ""
         if attachments:
             processed = process_all_attachments(attachments)
             attachment_text = create_attachment_summary(processed)
 
-        # -------- Final email object --------
+        # -------- Final Email Object --------
         emails.append({
             "id": msg["id"],
             "from": sender,
             "subject": subject,
             "body": body,
+            "attachments": attachments,
             "attachment_text": attachment_text
         })
 
