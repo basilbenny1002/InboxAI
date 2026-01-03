@@ -33,18 +33,17 @@ tools = [
 ]
 
 def call_llm(prompt: str) -> str:
-    """Simple summarization (keep for backward compatibility)"""
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "You summarize emails into 2–3 natural sentences."},
+            {"role": "system", "content": "You are an expert email summarizer. Summarize emails concisely in 2-3 sentences, mentioning key points from both the email body and any attachments."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.3,
-        max_tokens=300
+        max_tokens=500  # Increased from 300
     )
-    return response.choices[0].message.content.strip()
 
+    return response.choices[0].message.content.strip()
 
 def intelligent_command_handler(user_message: str, function_map: dict) -> dict:
     """
