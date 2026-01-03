@@ -8,22 +8,57 @@ from googleapiclient.discovery import build
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 def get_gmail_service():
-    creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    """Get authenticated Gmail service"""
     
+    # Get the directory where this file is located
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Go up to backend directory
+    backend_dir = os.path.dirname(current_dir)
+    
+    # Look for credentials in multiple possible locations
+    possible_paths = [
+        os.path.join(backend_dir, 'client_secret.json'),
+        os.path.join(backend_dir, 'credentials.json'),
+        'client_secret.json',
+        'credentials.json',
+        r'C:\Users\HP\Desktop\InboxAI\backend\client_secret.json',  # Absolute path
+    ]
+    
+    credentials_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            credentials_path = path
+            print(f"Found credentials at: {credentials_path}")
+            break
+    
+    if not credentials_path:
+        raise FileNotFoundError(
+            f"Credentials file not found! Searched in:\n" + 
+            "\n".join(f"  - {p}" for p in possible_paths) +
+            "\n\nPlease place client_secret.json or credentials.json in the backend folder."
+        )
+    
+    creds = None
+    token_path = os.path.join(backend_dir, 'token.json')
+    
+    # Load existing token if available
+    if os.path.exists(token_path):
+        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    
+    # If no valid credentials, authenticate
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
             creds = flow.run_local_server(port=0)
         
-        with open('token.json', 'w') as token:
+        # Save credentials for future use
+        with open(token_path, 'w') as token:
             token.write(creds.to_json())
     
     return build('gmail', 'v1', credentials=creds)
-
 
 def get_unread_emails(max_results=10):
     service = get_gmail_service()
