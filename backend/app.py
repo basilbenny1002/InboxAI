@@ -36,7 +36,7 @@ def root():
 # ============================ HELPERS ============================
 def get_unread_emails_summary():
     try:
-        emails = get_unread_emails()
+        emails = get_unread_emails() or []
         summaries = []
 
         for idx, email in enumerate(emails, start=1):
@@ -63,9 +63,13 @@ def get_unread_emails_summary():
             })
 
         return {
-            "email_count": len(summaries),
-            "summaries": summaries
-        }
+    "reply": f"You have {len(summaries)} unread emails.",
+    "data": {
+        "email_count": len(summaries),
+        "summaries": summaries
+    }
+}
+
 
     except Exception as e:
         traceback.print_exc()
@@ -74,10 +78,14 @@ def get_unread_emails_summary():
 
 def get_last_email_summary():
     try:
-        emails = get_unread_emails(max_results=1)
+        emails = get_unread_emails(max_results=1) or []
+
 
         if not emails:
-            return {"response": "No unread emails found."}
+            return {
+        "reply": "You have no unread emails."
+    }
+
 
         email = emails[0]
 
@@ -95,11 +103,14 @@ def get_last_email_summary():
         )
 
         return {
-            "sender": email["from"],
-            "category": category,
-            "summary": summary,
-            "has_attachments": bool(email.get("attachment_text"))
-        }
+    "reply": summary,
+    "data": {
+        "sender": email["from"],
+        "category": category,
+        "has_attachments": bool(email.get("attachment_text"))
+    }
+}
+
 
     except Exception as e:
         traceback.print_exc()
@@ -107,7 +118,7 @@ def get_last_email_summary():
 
 
 def get_unread_email_categories():
-    emails = get_unread_emails()
+    emails = get_unread_emails() or []
     results = []
 
     for email in emails:
@@ -124,13 +135,18 @@ def get_unread_email_categories():
         })
 
     return {
+    "reply": f"I found {len(results)} unread emails with categories.",
+    "data": {
         "email_count": len(results),
         "categories": results
     }
+}
+
+
 
 
 def check_emails_from_sender(sender_query: str):
-    emails = get_unread_emails()
+    emails = get_unread_emails() or []
 
     matched = [
         email for email in emails
@@ -158,31 +174,33 @@ def handle_command(payload: CommandPayload):
 
         # 🔍 RULE-BASED sender lookup (NOT LLM)
         if "email from" in command or "emails from" in command:
-            command.split("from")[-1]
+            sender_query = command.split("from")[-1]
             sender_query = re.sub(r"[^\w\s@.]", "", sender_query).strip()
+
 
             if not sender_query:
                 return {
-    "type": "conversation",
-    "message": "Whose emails should I check?"
-}
+        "reply": "Whose emails should I check?"
+    }
+
 
 
             result = check_emails_from_sender(sender_query)
 
             if result["count"] == 0:
                 return {
-                    "response": f"You have no unread emails from {sender_query}."
-                }
+    "reply": f"You have no unread emails from {sender_query}."
+}
+
 
             return {
-    "type": "conversation",
-    "message": (
+    "reply": (
         f"You have {result['count']} unread emails from {sender_query}. "
         "Do you want me to summarize them?"
     ),
     "data": result
 }
+
 
 
         # 🧠 LLM-controlled SAFE commands only
@@ -192,7 +210,12 @@ def handle_command(payload: CommandPayload):
             "get_unread_email_categories": get_unread_email_categories
         }
 
-        return intelligent_command_handler(payload.command, function_map)
+        result = intelligent_command_handler(payload.command, function_map)
+        return {
+    "reply": result if isinstance(result, str) else str(result)
+}
+
+    
 
     except Exception as e:
         traceback.print_exc()
