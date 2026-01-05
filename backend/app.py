@@ -157,8 +157,8 @@ def handle_command(payload: CommandPayload):
         command = payload.command.lower().strip()
 
         # 🔍 RULE-BASED sender lookup (NOT LLM)
-        if "emails from" in command:
-            sender_query = command.split("emails from")[-1].strip()
+        if "email from" in command or "emails from" in command:
+            sender_query = command.split("from")[-1].strip()
 
             if not sender_query:
                 return {"response": "Whose emails should I check?"}
