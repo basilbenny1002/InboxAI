@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import traceback
+
 from services.email_categorizer import get_email_category
 from services.gmail_client import get_unread_emails
 from ai_logic.email import summarize_email_logic
@@ -35,44 +36,31 @@ def root():
 # ============================ HELPERS ============================
 def get_unread_emails_summary():
     try:
-        print("\n=== Starting get_unread_emails_summary ===")
         emails = get_unread_emails()
-        print(f"Retrieved {len(emails)} emails")
-
         summaries = []
 
         for idx, email in enumerate(emails, start=1):
-            print(f"\nProcessing email {idx}")
-            print(f"Sender: {email['from']}")
-            print(f"Subject: {email.get('subject', 'No Subject')}")
-            print(f"Body length: {len(email['body'])} chars")
-            print(f"Has attachments: {bool(email.get('attachment_text'))}")
-
-            has_attachments = bool(email.get("attachment_text"))
-
             category = get_email_category(
                 body=email["body"],
                 sender=email["from"],
                 subject=email.get("subject", "")
             )
-            
-            # Provide better context to the AI
+
             summary = summarize_email_logic(
                 body=email["body"],
                 sender=email["from"],
                 subject=email.get("subject", ""),
-                attachments=email.get("attachment_text", "")  # This is already a string - correct!
+                attachments=email.get("attachment_text", "")
             )
 
             summaries.append({
-    "summary_number": idx,
-    "sender": email["from"],
-    "subject": email.get("subject", "No Subject"),
-    "category": category,
-    "summary": summary,
-    "has_attachments": has_attachments
-})
-
+                "summary_number": idx,
+                "sender": email["from"],
+                "subject": email.get("subject", "No Subject"),
+                "category": category,
+                "summary": summary,
+                "has_attachments": bool(email.get("attachment_text"))
+            })
 
         return {
             "email_count": len(summaries),
@@ -80,44 +68,43 @@ def get_unread_emails_summary():
         }
 
     except Exception as e:
-        print("\n!!! ERROR in get_unread_emails_summary !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def get_last_email_summary():
     try:
         emails = get_unread_emails(max_results=1)
 
         if not emails:
-            return {"error": "No unread emails found"}
+            return {"response": "No unread emails found."}
 
         email = emails[0]
 
         category = get_email_category(
-    body=email["body"],
-    sender=email["from"],
-    subject=email.get("subject", "")
-)
-
+            body=email["body"],
+            sender=email["from"],
+            subject=email.get("subject", "")
+        )
 
         summary = summarize_email_logic(
             body=email["body"],
             sender=email["from"],
+            subject=email.get("subject", ""),
             attachments=email.get("attachment_text", "")
         )
 
         return {
-    "sender": email["from"],
-    "category": category,
-    "summary": summary,
-    "has_attachments": bool(email.get("attachment_text"))
-}
-
+            "sender": email["from"],
+            "category": category,
+            "summary": summary,
+            "has_attachments": bool(email.get("attachment_text"))
+        }
 
     except Exception as e:
-        print("\n!!! ERROR in get_last_email_summary !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 def get_unread_email_categories():
     emails = get_unread_emails()
@@ -141,19 +128,18 @@ def get_unread_email_categories():
         "categories": results
     }
 
+
 def check_emails_from_sender(sender_query: str):
     emails = get_unread_emails()
-    
+
     matched = [
         email for email in emails
         if sender_query.lower() in email["from"].lower()
     ]
 
-    count = len(matched)
-
     return {
         "sender_query": sender_query,
-        "count": count,
+        "count": len(matched),
         "emails": [
             {
                 "from": email["from"],
@@ -163,21 +149,45 @@ def check_emails_from_sender(sender_query: str):
         ]
     }
 
+
 # ============================ COMMAND HANDLER ============================
 @app.post("/command")
 def handle_command(payload: CommandPayload):
     try:
+        command = payload.command.lower().strip()
+
+        # 🔍 RULE-BASED sender lookup (NOT LLM)
+        if "emails from" in command:
+            sender_query = command.split("emails from")[-1].strip()
+
+            if not sender_query:
+                return {"response": "Whose emails should I check?"}
+
+            result = check_emails_from_sender(sender_query)
+
+            if result["count"] == 0:
+                return {
+                    "response": f"You have no unread emails from {sender_query}."
+                }
+
+            return {
+                "response": (
+                    f"You have {result['count']} unread emails from {sender_query}. "
+                    "Do you want me to summarize them?"
+                ),
+                "data": result
+            }
+
+        # 🧠 LLM-controlled SAFE commands only
         function_map = {
             "get_unread_emails_summary": get_unread_emails_summary,
             "get_last_email_summary": get_last_email_summary,
-            "get_unread_email_categories": get_unread_email_categories,
-            "check_emails_from_sender": check_emails_from_sender
+            "get_unread_email_categories": get_unread_email_categories
         }
 
         return intelligent_command_handler(payload.command, function_map)
 
     except Exception as e:
-        print("\n!!! ERROR in handle_command !!!")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

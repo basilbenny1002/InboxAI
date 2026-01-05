@@ -163,3 +163,25 @@ def extract_attachments(payload, service, message_id, attachments_list):
         # Recurse into nested parts
         if part.get("parts"):
             extract_attachments(part, service, message_id, attachments_list)
+            
+def check_emails_from_sender(sender_query: str):
+    emails = get_unread_emails()
+    
+    matched = [
+        email for email in emails
+        if sender_query.lower() in email["from"].lower()
+    ]
+
+    count = len(matched)
+
+    return {
+        "sender_query": sender_query,
+        "count": count,
+        "emails": [
+            {
+                "from": email["from"],
+                "subject": email.get("subject", "No Subject")
+            }
+            for email in matched
+        ]
+    }
