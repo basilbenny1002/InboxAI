@@ -141,6 +141,28 @@ def get_unread_email_categories():
         "categories": results
     }
 
+def check_emails_from_sender(sender_query: str):
+    emails = get_unread_emails()
+    
+    matched = [
+        email for email in emails
+        if sender_query.lower() in email["from"].lower()
+    ]
+
+    count = len(matched)
+
+    return {
+        "sender_query": sender_query,
+        "count": count,
+        "emails": [
+            {
+                "from": email["from"],
+                "subject": email.get("subject", "No Subject")
+            }
+            for email in matched
+        ]
+    }
+
 # ============================ COMMAND HANDLER ============================
 @app.post("/command")
 def handle_command(payload: CommandPayload):
@@ -148,7 +170,8 @@ def handle_command(payload: CommandPayload):
         function_map = {
             "get_unread_emails_summary": get_unread_emails_summary,
             "get_last_email_summary": get_last_email_summary,
-            "get_unread_email_categories": get_unread_email_categories
+            "get_unread_email_categories": get_unread_email_categories,
+            "check_emails_from_sender": check_emails_from_sender
         }
 
         return intelligent_command_handler(payload.command, function_map)

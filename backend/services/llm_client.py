@@ -41,7 +41,25 @@ tools = [
       "required": []
     }
   }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "check_emails_from_sender",
+        "description": "Check how many unread emails are from a specific sender (e.g., GitHub, Google, LinkedIn)",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "sender_query": {
+                    "type": "string",
+                    "description": "Sender name or keyword to search for"
+                }
+            },
+            "required": ["sender_query"]
+        }
+    }
 }
+
 
 ]
 
@@ -85,6 +103,12 @@ Examples:
 - "show unread emails" → Use get_unread_emails_summary
 - If the user asks about categories, labels, types, or classification of emails,
 use get_unread_email_categories.
+- If the user asks whether they have emails from a specific sender
+(e.g., "GitHub", "Google", "LinkedIn", "from X"),
+use check_emails_from_sender.
+If the count is greater than zero, ask the user if they want a summary.
+Do NOT summarize unless they confirm.
+
 - "summarize my inbox" → Use get_unread_emails_summary"""
         },
         {
