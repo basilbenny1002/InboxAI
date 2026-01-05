@@ -63,13 +63,12 @@ def get_unread_emails_summary():
             })
 
         return {
-    "reply": f"You have {len(summaries)} unread emails.",
-    "data": {
-        "email_count": len(summaries),
-        "summaries": summaries
-    }
-}
-
+            "reply": f"You have {len(summaries)} unread emails.",
+            "data": {
+                "email_count": len(summaries),
+                "summaries": summaries
+            }
+        }
 
     except Exception as e:
         traceback.print_exc()
@@ -80,12 +79,10 @@ def get_last_email_summary():
     try:
         emails = get_unread_emails(max_results=1) or []
 
-
         if not emails:
             return {
-        "reply": "You have no unread emails."
-    }
-
+                "reply": "You have no unread emails."
+            }
 
         email = emails[0]
 
@@ -103,14 +100,13 @@ def get_last_email_summary():
         )
 
         return {
-    "reply": summary,
-    "data": {
-        "sender": email["from"],
-        "category": category,
-        "has_attachments": bool(email.get("attachment_text"))
-    }
-}
-
+            "reply": summary,
+            "data": {
+                "sender": email["from"],
+                "category": category,
+                "has_attachments": bool(email.get("attachment_text"))
+            }
+        }
 
     except Exception as e:
         traceback.print_exc()
@@ -135,14 +131,12 @@ def get_unread_email_categories():
         })
 
     return {
-    "reply": f"I found {len(results)} unread emails with categories.",
-    "data": {
-        "email_count": len(results),
-        "categories": results
+        "reply": f"I found {len(results)} unread emails with categories.",
+        "data": {
+            "email_count": len(results),
+            "categories": results
+        }
     }
-}
-
-
 
 
 def check_emails_from_sender(sender_query: str):
@@ -177,31 +171,25 @@ def handle_command(payload: CommandPayload):
             sender_query = command.split("from")[-1]
             sender_query = re.sub(r"[^\w\s@.]", "", sender_query).strip()
 
-
             if not sender_query:
                 return {
-        "reply": "Whose emails should I check?"
-    }
-
-
+                    "reply": "Whose emails should I check?"
+                }
 
             result = check_emails_from_sender(sender_query)
 
             if result["count"] == 0:
                 return {
-    "reply": f"You have no unread emails from {sender_query}."
-}
-
+                    "reply": f"You have no unread emails from {sender_query}."
+                }
 
             return {
-    "reply": (
-        f"You have {result['count']} unread emails from {sender_query}. "
-        "Do you want me to summarize them?"
-    ),
-    "data": result
-}
-
-
+                "reply": (
+                    f"You have {result['count']} unread emails from {sender_query}. "
+                    "Do you want me to summarize them?"
+                ),
+                "data": result
+            }
 
         # 🧠 LLM-controlled SAFE commands only
         function_map = {
@@ -211,11 +199,13 @@ def handle_command(payload: CommandPayload):
         }
 
         result = intelligent_command_handler(payload.command, function_map)
-        return {
-    "reply": result if isinstance(result, str) else str(result)
-}
 
-    
+        # If result is already a dict with proper structure, return it directly
+        if isinstance(result, dict) and "reply" in result:
+            return result
+        
+        # Otherwise, wrap simple string responses
+        return {"reply": result}
 
     except Exception as e:
         traceback.print_exc()
