@@ -146,8 +146,26 @@ input.addEventListener("keydown", e => {
 });
 
 // ===================== GREETING =====================
-const greeting = "Hi, this is InboxAI. How can I help you?";
+const greetingText = "Hi, this is InboxAI. How can I help you?";
 
 window.onload = () => {
-  addMessage(greeting, "bot");
+  // show greeting text immediately
+  const div = document.createElement("div");
+  div.className = "message bot";
+  div.textContent = greetingText;
+  chatMessages.appendChild(div);
+  scrollToBottom();
 };
+
+// 🔓 After first user interaction → speak greeting
+document.addEventListener("click", () => {
+  if (!speechUnlocked) {
+    const unlock = new SpeechSynthesisUtterance(" ");
+    unlock.volume = 0;
+    window.speechSynthesis.speak(unlock);
+    speechUnlocked = true;
+  }
+
+  speak(greetingText);
+}, { once: true });
+
