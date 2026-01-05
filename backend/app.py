@@ -147,16 +147,27 @@ def check_emails_from_sender(sender_query: str):
         if sender_query.lower() in email["from"].lower()
     ]
 
+    if len(matched) == 0:
+        return {
+            "reply": f"You have no unread emails from {sender_query}."
+        }
+    
     return {
-        "sender_query": sender_query,
-        "count": len(matched),
-        "emails": [
-            {
-                "from": email["from"],
-                "subject": email.get("subject", "No Subject")
-            }
-            for email in matched
-        ]
+        "reply": (
+            f"You have {len(matched)} unread email{'s' if len(matched) > 1 else ''} from {sender_query}. "
+            "Do you want me to summarize them?"
+        ),
+        "data": {
+            "sender_query": sender_query,
+            "count": len(matched),
+            "emails": [
+                {
+                    "from": email["from"],
+                    "subject": email.get("subject", "No Subject")
+                }
+                for email in matched
+            ]
+        }
     }
 
 
@@ -176,20 +187,7 @@ def handle_command(payload: CommandPayload):
                     "reply": "Whose emails should I check?"
                 }
 
-            result = check_emails_from_sender(sender_query)
-
-            if result["count"] == 0:
-                return {
-                    "reply": f"You have no unread emails from {sender_query}."
-                }
-
-            return {
-                "reply": (
-                    f"You have {result['count']} unread emails from {sender_query}. "
-                    "Do you want me to summarize them?"
-                ),
-                "data": result
-            }
+            return check_emails_from_sender(sender_query)
 
         # 🧠 LLM-controlled SAFE commands only
         function_map = {
