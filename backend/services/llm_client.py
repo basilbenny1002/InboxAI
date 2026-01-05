@@ -31,36 +31,34 @@ tools = [
         }
     },
     {
-  "type": "function",
-  "function": {
-    "name": "get_unread_email_categories",
-    "description": "Get categories for all unread emails",
-    "parameters": {
-      "type": "object",
-      "properties": {},
-      "required": []
-    }
-  }
-},
-{
-    "type": "function",
-    "function": {
-        "name": "check_emails_from_sender",
-        "description": "Check how many unread emails are from a specific sender (e.g., GitHub, Google, LinkedIn)",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "sender_query": {
-                    "type": "string",
-                    "description": "Sender name or keyword to search for"
-                }
-            },
-            "required": ["sender_query"]
+        "type": "function",
+        "function": {
+            "name": "get_unread_email_categories",
+            "description": "Get categories for all unread emails",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_emails_from_sender",
+            "description": "Check how many unread emails are from a specific sender (e.g., GitHub, Google, LinkedIn)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sender_query": {
+                        "type": "string",
+                        "description": "Sender name or keyword to search for"
+                    }
+                },
+                "required": ["sender_query"]
+            }
         }
     }
-}
-
-
 ]
 
 def call_llm(prompt: str) -> str:
@@ -71,7 +69,7 @@ def call_llm(prompt: str) -> str:
             {"role": "user", "content": prompt}
         ],
         temperature=0.3,
-        max_tokens=500  # Increased from 300
+        max_tokens=500
     )
 
     return response.choices[0].message.content.strip()
@@ -85,7 +83,7 @@ def intelligent_command_handler(user_message: str, function_map: dict) -> dict:
         function_map: Dictionary mapping function names to actual Python functions
         
     Returns:
-        dict with response data
+        dict with "reply" and optionally "data" keys
     """
     
     messages = [
@@ -105,10 +103,7 @@ Examples:
 use get_unread_email_categories.
 - If the user asks whether they have emails from a specific sender
 (e.g., "GitHub", "Google", "LinkedIn", "from X"),
-use check_emails_from_sender.
-If the count is greater than zero, ask the user if they want a summary.
-Do NOT summarize unless they confirm.
-
+use check_emails_from_sender with the sender name as parameter.
 - "summarize my inbox" → Use get_unread_emails_summary"""
         },
         {
@@ -133,8 +128,7 @@ Do NOT summarize unless they confirm.
     # If no function call needed (e.g., just saying hello), return conversational response
     if not tool_calls:
         return {
-            "type": "conversation",
-            "message": response_message.content
+            "reply": response_message.content or "I'm here to help with your emails!"
         }
     
     # Execute the function calls
@@ -143,10 +137,16 @@ Do NOT summarize unless they confirm.
     function_results = []
     for tool_call in tool_calls:
         function_name = tool_call.function.name
+        function_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
         
         # Call the actual Python function
         if function_name in function_map:
-            function_response = function_map[function_name]()
+            # Pass arguments if the function expects them
+            if function_args:
+                function_response = function_map[function_name](**function_args)
+            else:
+                function_response = function_map[function_name]()
+                
             function_results.append({
                 "name": function_name,
                 "result": function_response
@@ -170,25 +170,20 @@ Do NOT summarize unless they confirm.
     
     final_content = final_response.choices[0].message.content
     
-    # Determine response type based on which function was called
+    # Return in the format expected by main.py
     if function_results:
-        function_name = function_results[0]["name"]
-        function_data = function_results[0]["result"]
+        first_result = function_results[0]["result"]
         
-        if function_name == "get_last_email_summary":
-            return {
-                "type": "single_email",
-                "message": final_content,
-                "data": function_data
-            }
-        elif function_name == "get_unread_emails_summary":
-            return {
-                "type": "multiple_emails",
-                "message": final_content,
-                "data": function_data
-            }
+        # If the function already returned proper format with "reply" key, use it
+        if isinstance(first_result, dict) and "reply" in first_result:
+            return first_result
+        
+        # Otherwise, wrap the LLM's response
+        return {
+            "reply": final_content,
+            "data": first_result if isinstance(first_result, dict) else {}
+        }
     
     return {
-        "type": "conversation",
-        "message": final_content
+        "reply": final_content
     }

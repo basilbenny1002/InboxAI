@@ -193,7 +193,8 @@ def handle_command(payload: CommandPayload):
         function_map = {
             "get_unread_emails_summary": get_unread_emails_summary,
             "get_last_email_summary": get_last_email_summary,
-            "get_unread_email_categories": get_unread_email_categories
+            "get_unread_email_categories": get_unread_email_categories,
+            "check_emails_from_sender": check_emails_from_sender
         }
 
         result = intelligent_command_handler(payload.command, function_map)
