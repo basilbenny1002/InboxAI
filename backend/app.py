@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import traceback
 import re
+
 from services.email_categorizer import get_email_category
 from services.gmail_client import get_unread_emails
 from ai_logic.email import summarize_email_logic
@@ -30,105 +31,107 @@ class CommandPayload(BaseModel):
 # ============================ ROOT ============================
 @app.get("/")
 def root():
-    return {"status": "InboxAI backend running", "docs": "/docs"}
+    return {
+        "reply": "InboxAI backend running",
+        "data": {"docs": "/docs"}
+    }
 
 
 # ============================ HELPERS ============================
 def get_unread_emails_summary():
-    try:
-        emails = get_unread_emails() or []
-        summaries = []
+    emails = get_unread_emails() or []
 
-        for idx, email in enumerate(emails, start=1):
-            category = get_email_category(
-                body=email["body"],
-                sender=email["from"],
-                subject=email.get("subject", "")
-            )
-
-            summary = summarize_email_logic(
-                body=email["body"],
-                sender=email["from"],
-                subject=email.get("subject", ""),
-                attachments=email.get("attachment_text", "")
-            )
-
-            summaries.append({
-                "summary_number": idx,
-                "sender": email["from"],
-                "subject": email.get("subject", "No Subject"),
-                "category": category,
-                "summary": summary,
-                "has_attachments": bool(email.get("attachment_text"))
-            })
-
+    if not emails:
         return {
-            "reply": f"You have {len(summaries)} unread emails.",
-            "data": {
-                "email_count": len(summaries),
-                "summaries": summaries
-            }
+            "reply": "You have no unread emails.",
+            "data": {"email_count": 0, "summaries": []}
         }
 
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    summaries = []
 
-
-def get_last_email_summary():
-    try:
-        emails = get_unread_emails(max_results=1) or []
-
-        if not emails:
-            return {
-                "reply": "You have no unread emails."
-            }
-
-        email = emails[0]
+    for idx, email in enumerate(emails, start=1):
+        body = email.get("body", "")
+        sender = email.get("from", "Unknown sender")
+        subject = email.get("subject", "")
 
         category = get_email_category(
-            body=email["body"],
-            sender=email["from"],
-            subject=email.get("subject", "")
+            body=body,
+            sender=sender,
+            subject=subject
         )
 
         summary = summarize_email_logic(
-            body=email["body"],
-            sender=email["from"],
-            subject=email.get("subject", ""),
+            body=body,
+            sender=sender,
+            subject=subject,
             attachments=email.get("attachment_text", "")
         )
 
+        summaries.append({
+            "summary_number": idx,
+            "sender": sender,
+            "subject": subject or "No Subject",
+            "category": category,
+            "summary": summary,
+            "has_attachments": bool(email.get("attachment_text"))
+        })
+
+    return {
+        "reply": f"You have {len(summaries)} unread emails.",
+        "data": {
+            "email_count": len(summaries),
+            "summaries": summaries
+        }
+    }
+
+
+def get_last_email_summary():
+    emails = get_unread_emails(max_results=1) or []
+
+    if not emails:
         return {
-            "reply": summary,
-            "data": {
-                "sender": email["from"],
-                "category": category,
-                "has_attachments": bool(email.get("attachment_text"))
-            }
+            "reply": "You have no unread emails.",
+            "data": None
         }
 
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    email = emails[0]
+
+    summary = summarize_email_logic(
+        body=email.get("body", ""),
+        sender=email.get("from", "Unknown sender"),
+        subject=email.get("subject", ""),
+        attachments=email.get("attachment_text", "")
+    )
+
+    return {
+        "reply": summary,
+        "data": {
+            "sender": email.get("from"),
+            "category": get_email_category(
+                body=email.get("body", ""),
+                sender=email.get("from", ""),
+                subject=email.get("subject", "")
+            ),
+            "has_attachments": bool(email.get("attachment_text"))
+        }
+    }
 
 
 def get_unread_email_categories():
     emails = get_unread_emails() or []
-    results = []
 
-    for email in emails:
-        category = get_email_category(
-            body=email["body"],
-            sender=email["from"],
-            subject=email.get("subject", "")
-        )
-
-        results.append({
-            "sender": email["from"],
+    results = [
+        {
+            "sender": email.get("from", ""),
             "subject": email.get("subject", "No Subject"),
-            "category": category
-        })
+            "category": get_email_category(
+                body=email.get("body", ""),
+                sender=email.get("from", ""),
+                subject=email.get("subject", "")
+            )
+        }
+        for email in emails
+    ]
 
     return {
         "reply": f"I found {len(results)} unread emails with categories.",
@@ -144,25 +147,23 @@ def check_emails_from_sender(sender_query: str):
 
     matched = [
         email for email in emails
-        if sender_query.lower() in email["from"].lower()
+        if sender_query.lower() in email.get("from", "").lower()
     ]
 
-    if len(matched) == 0:
+    if not matched:
         return {
-            "reply": f"You have no unread emails from {sender_query}."
+            "reply": f"You have no unread emails from {sender_query}.",
+            "data": None
         }
-    
+
     return {
-        "reply": (
-            f"You have {len(matched)} unread email{'s' if len(matched) > 1 else ''} from {sender_query}. "
-            "Do you want me to summarize them?"
-        ),
+        "reply": f"You have {len(matched)} unread emails from {sender_query}.",
         "data": {
             "sender_query": sender_query,
             "count": len(matched),
             "emails": [
                 {
-                    "from": email["from"],
+                    "from": email.get("from"),
                     "subject": email.get("subject", "No Subject")
                 }
                 for email in matched
@@ -175,43 +176,57 @@ def check_emails_from_sender(sender_query: str):
 @app.post("/command")
 def handle_command(payload: CommandPayload):
     try:
-        command = payload.command.lower().strip()
+        command = payload.command.strip().lower()
 
-        # 🔍 RULE-BASED sender lookup (NOT LLM)
+        # 🔍 RULE-BASED sender lookup
         if "email from" in command or "emails from" in command:
             sender_query = command.split("from")[-1]
             sender_query = re.sub(r"[^\w\s@.]", "", sender_query).strip()
 
             if not sender_query:
                 return {
-                    "reply": "Whose emails should I check?"
+                    "reply": "Whose emails should I check?",
+                    "data": None
                 }
 
             return check_emails_from_sender(sender_query)
 
-        # 🧠 LLM-controlled SAFE commands only
+        # 🧠 LLM SAFE COMMANDS
         function_map = {
             "get_unread_emails_summary": get_unread_emails_summary,
             "get_last_email_summary": get_last_email_summary,
-            "get_unread_email_categories": get_unread_email_categories,
-            "check_emails_from_sender": check_emails_from_sender
+            "get_unread_email_categories": get_unread_email_categories
         }
 
         result = intelligent_command_handler(payload.command, function_map)
 
-        # If result is already a dict with proper structure, return it directly
-        if isinstance(result, dict) and "reply" in result:
-            return result
-        
-        # Otherwise, wrap simple string responses
-        return {"reply": result}
+        # ✅ NORMALIZATION (THIS WAS MISSING)
+        if isinstance(result, dict):
+            return {
+                "reply": result.get("reply") or result.get("message") or "",
+                "data": result.get("data")
+            }
+
+        return {
+            "reply": str(result),
+            "data": None
+        }
 
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail="Command processing failed"
+        )
 
 
-# ============================ LEGACY ============================
 @app.post("/summarize/unread")
 def summarize_unread_emails():
-    return get_unread_emails_summary()
+    try:
+        return get_unread_emails_summary()
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to summarize unread emails"
+        )

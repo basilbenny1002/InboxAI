@@ -4,7 +4,7 @@ from groq import Groq
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# Define available tools/functions
+# ===================== TOOLS =====================
 tools = [
     {
         "type": "function",
@@ -61,11 +61,15 @@ tools = [
     }
 ]
 
+# ===================== BASIC LLM =====================
 def call_llm(prompt: str) -> str:
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "You are an expert email summarizer. Summarize emails concisely in 2-3 sentences, mentioning key points from both the email body and any attachments."},
+            {
+                "role": "system",
+                "content": "You are an expert email summarizer. Summarize emails concisely in 2-3 sentences, mentioning key points from both the email body and any attachments."
+            },
             {"role": "user", "content": prompt}
         ],
         temperature=0.3,
@@ -74,18 +78,18 @@ def call_llm(prompt: str) -> str:
 
     return response.choices[0].message.content.strip()
 
+# ===================== INTELLIGENT HANDLER =====================
 def intelligent_command_handler(user_message: str, function_map: dict) -> dict:
     """
     Intelligent command handler using function calling
-    
-    Args:
-        user_message: The user's input
-        function_map: Dictionary mapping function names to actual Python functions
-        
-    Returns:
-        dict with "reply" and optionally "data" keys
+
+    ALWAYS returns:
+    {
+        "reply": str,
+        "data": dict | None
+    }
     """
-    
+
     messages = [
         {
             "role": "system",
@@ -111,79 +115,58 @@ use check_emails_from_sender with the sender name as parameter.
             "content": user_message
         }
     ]
-    
-    # First API call - let Groq decide what to do
+
+    # -------- First call: decide intent --------
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=messages,
         tools=tools,
         tool_choice="auto",
-        max_tokens=500,
-        temperature=0.7
+        temperature=0.7,
+        max_tokens=500
     )
-    
+
     response_message = response.choices[0].message
     tool_calls = response_message.tool_calls
-    
-    # If no function call needed (e.g., just saying hello), return conversational response
+
+    # 🟢 NO TOOL CALL → GREETING / CHAT
     if not tool_calls:
         return {
-            "reply": response_message.content or "I'm here to help with your emails!"
+            "reply": response_message.content or "I'm here to help with your emails!",
+            "data": None
         }
-    
-    # Execute the function calls
-    messages.append(response_message)
-    
-    function_results = []
-    for tool_call in tool_calls:
-        function_name = tool_call.function.name
-        function_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
-        
-        # Call the actual Python function
-        if function_name in function_map:
-            # Pass arguments if the function expects them
-            if function_args:
-                function_response = function_map[function_name](**function_args)
-            else:
-                function_response = function_map[function_name]()
-                
-            function_results.append({
-                "name": function_name,
-                "result": function_response
-            })
-            
-            # Add function response to messages
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "name": function_name,
-                "content": json.dumps(function_response)
-            })
-    
-    # Second API call - let Groq format the response naturally
-    final_response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=messages,
-        temperature=0.7,
-        max_tokens=1000
-    )
-    
-    final_content = final_response.choices[0].message.content
-    
-    # Return in the format expected by main.py
-    if function_results:
-        first_result = function_results[0]["result"]
-        
-        # If the function already returned proper format with "reply" key, use it
-        if isinstance(first_result, dict) and "reply" in first_result:
-            return first_result
-        
-        # Otherwise, wrap the LLM's response
+
+    # -------- Execute tool (ONLY FIRST TOOL CALL) --------
+    tool_call = tool_calls[0]
+    function_name = tool_call.function.name
+    function_args = json.loads(tool_call.function.arguments or "{}")
+
+    if function_name not in function_map:
         return {
-            "reply": final_content,
-            "data": first_result if isinstance(first_result, dict) else {}
+            "reply": "Sorry, I can't handle that request yet.",
+            "data": None
         }
-    
+
+    try:
+        if function_args:
+            function_result = function_map[function_name](**function_args)
+        else:
+            function_result = function_map[function_name]()
+    except Exception as e:
+        return {
+            "reply": "Something went wrong while fetching your emails.",
+            "data": {"error": str(e)}
+        }
+
+    # -------- FORCE STANDARD RESPONSE FORMAT --------
+    if isinstance(function_result, dict):
+        return {
+            "reply": function_result.get("reply", ""),
+            "data": function_result.get("data")
+        }
+
+    # Fallback safety net
     return {
-        "reply": final_content
+        "reply": str(function_result),
+        "data": None
     }

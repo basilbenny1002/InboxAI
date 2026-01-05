@@ -1,16 +1,23 @@
 from services.llm_client import call_llm
 
+MAX_CATEGORY_BODY_CHARS = 500
+
 def get_email_category(body: str, sender: str, subject: str = "") -> str:
-    prompt = f"""
-    Categorize the email into ONE category:
-    Primary, Promotions, Social, Spam, Updates
+    # Trim body aggressively (categorization does NOT need more)
+    if body and len(body) > MAX_CATEGORY_BODY_CHARS:
+        body = body[:MAX_CATEGORY_BODY_CHARS] + "..."
 
-    Sender: {sender}
-    Subject: {subject}
-    Body: {body}
-
-    Respond with ONLY the category name.
-    """
+    prompt = (
+        "Categorize the email into ONE category:\n"
+        "Primary, Promotions, Social, Spam, Updates\n\n"
+        f"Sender: {sender}\n"
+        f"Subject: {subject}\n"
+        f"Body: {body}\n\n"
+        "Respond with ONLY the category name."
+    )
 
     category = call_llm(prompt).strip()
-    return category
+
+    # Safety net (LLMs can be creative when bored)
+    allowed = {"Primary", "Promotions", "Social", "Spam", "Updates"}
+    return category if category in allowed else "Primary"

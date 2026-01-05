@@ -2,6 +2,7 @@ import os
 import base64
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 from ai_logic.readers.attachment_processor import (
@@ -10,34 +11,43 @@ from ai_logic.readers.attachment_processor import (
 )
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
+TOKEN_FILE = "token.json"
+CREDENTIALS_FILE = "client_secret.json"
 
 
 # ============================ GMAIL SERVICE ============================
 
 def get_gmail_service():
-    creds = Credentials(
-        token=None,
-        refresh_token=os.getenv("GMAIL_REFRESH_TOKEN"),
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=SCOPES,
-    )
+    creds = None
 
-    if not creds.refresh_token:
-        raise RuntimeError("Missing GMAIL_REFRESH_TOKEN env var")
+    # Load existing token
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-    creds.refresh(Request())
+    # If no valid credentials, force OAuth login
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            if not os.path.exists(CREDENTIALS_FILE):
+                raise RuntimeError("Missing client_secret.json for Gmail OAuth")
+
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CREDENTIALS_FILE,
+                SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+
+        # Save token for future runs
+        with open(TOKEN_FILE, "w") as token:
+            token.write(creds.to_json())
+
     return build("gmail", "v1", credentials=creds)
 
 
 # ============================ BODY EXTRACTION ============================
 
 def extract_body(payload):
-    """
-    Recursively extract email body.
-    Priority: text/plain > text/html
-    """
     if payload.get("body", {}).get("data"):
         return base64.urlsafe_b64decode(
             payload["body"]["data"]
@@ -59,16 +69,48 @@ def extract_body(payload):
                 part["body"]["data"]
             ).decode("utf-8", errors="ignore")
 
-        # 🔁 Recurse into nested parts
         if part.get("parts"):
             nested = extract_body(part)
             if nested:
                 return nested
 
-    return html_body  # fallback if only HTML exists
+    return html_body
+
+
+# ============================ ATTACHMENTS ============================
+
+def extract_attachments(payload, service, message_id, attachments_list):
+    parts = payload.get("parts", [])
+
+    for part in parts:
+        if part.get("filename") and part.get("body", {}).get("attachmentId"):
+            att_id = part["body"]["attachmentId"]
+
+            att = service.users().messages().attachments().get(
+                userId="me",
+                messageId=message_id,
+                id=att_id
+            ).execute()
+
+            file_data = base64.urlsafe_b64decode(att["data"].encode("UTF-8"))
+
+            os.makedirs("temp_attachments", exist_ok=True)
+            file_path = f"temp_attachments/{part['filename']}"
+
+            with open(file_path, "wb") as f:
+                f.write(file_data)
+
+            attachments_list.append({
+                "filename": part["filename"],
+                "path": file_path
+            })
+
+        if part.get("parts"):
+            extract_attachments(part, service, message_id, attachments_list)
 
 
 # ============================ MAIN FUNCTION ============================
+
 def get_unread_emails(max_results=10):
     service = get_gmail_service()
 
@@ -91,7 +133,6 @@ def get_unread_emails(max_results=10):
         payload = msg_data.get("payload", {})
         headers = payload.get("headers", [])
 
-        # -------- Headers --------
         sender = next(
             (h["value"] for h in headers if h["name"].lower() == "from"),
             "Unknown"
@@ -102,24 +143,19 @@ def get_unread_emails(max_results=10):
             "No Subject"
         )
 
-        # -------- Body --------
         body = extract_body(payload)
 
-        # -------- Attachments (FIXED) --------
         attachments = []
         extract_attachments(payload, service, msg["id"], attachments)
 
-        # -------- Process Attachments --------
         attachment_text = ""
         if attachments:
             try:
                 processed = process_all_attachments(attachments)
                 attachment_text = create_attachment_summary(processed)
             except Exception as e:
-                print(f"Error processing attachments: {e}")
                 attachment_text = f"[Error processing {len(attachments)} attachment(s)]"
 
-        # -------- Final Email Object --------
         emails.append({
             "id": msg["id"],
             "from": sender,
@@ -130,58 +166,3 @@ def get_unread_emails(max_results=10):
         })
 
     return emails
-
-      
-def extract_attachments(payload, service, message_id, attachments_list):
-    """Recursively extract all attachments from email parts"""
-    parts = payload.get("parts", [])
-    
-    for part in parts:
-        # Check if this part is an attachment
-        if part.get("filename") and part.get("body", {}).get("attachmentId"):
-            att_id = part["body"]["attachmentId"]
-            
-            att = service.users().messages().attachments().get(
-                userId="me",
-                messageId=message_id,
-                id=att_id
-            ).execute()
-            
-            file_data = base64.urlsafe_b64decode(att["data"].encode("UTF-8"))
-            
-            os.makedirs("temp_attachments", exist_ok=True)
-            file_path = f"temp_attachments/{part['filename']}"
-            
-            with open(file_path, "wb") as f:
-                f.write(file_data)
-            
-            attachments_list.append({
-                "filename": part["filename"],
-                "path": file_path
-            })
-        
-        # Recurse into nested parts
-        if part.get("parts"):
-            extract_attachments(part, service, message_id, attachments_list)
-            
-def check_emails_from_sender(sender_query: str):
-    emails = get_unread_emails()
-    
-    matched = [
-        email for email in emails
-        if sender_query.lower() in email["from"].lower()
-    ]
-
-    count = len(matched)
-
-    return {
-        "sender_query": sender_query,
-        "count": count,
-        "emails": [
-            {
-                "from": email["from"],
-                "subject": email.get("subject", "No Subject")
-            }
-            for email in matched
-        ]
-    }
