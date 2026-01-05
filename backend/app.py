@@ -188,6 +188,11 @@ def handle_command(payload: CommandPayload):
             "get_unread_email_categories": get_unread_email_categories
         }
 
+        # 🔁 FOLLOW-UP shortcut (NO LLM)
+        if command in ["summarize them", "summarize", "summarise them"]:
+            return get_unread_emails_summary()
+
+
         result = intelligent_command_handler(payload.command, function_map)
 
         # ✅ HARD RESPONSE NORMALIZATION (frontend expects this)
